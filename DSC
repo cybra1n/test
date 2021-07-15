@@ -1,0 +1,96 @@
+function Flush-DSCConfig
+{
+
+	#List current DSC Docs:
+	Get-ChildItem -Path 'C:\Windows\System32\Configuration' -File -Force
+	
+	#Remove All Docs:
+	Remove-DscConfigurationDocument -Stage Current, Pending, Previous -Verbose
+	
+	#Verify:
+	Get-ChildItem -Path 'C:\Windows\System32\Configuration' -File -Force
+	
+	#Stop DSC Configuration
+	Stop-DscConfiguration -Verbose -Force
+	
+	#Remove all mof files (pending,current,backup,MetaConfig.mof,caches,etc)
+	rm C:\windows\system32\Configuration\*.mof*
+	
+	#Kill the LCM/DSC processes
+	gps wmi* | ? {$_.modules.ModuleName -like "*DSC*"} | stop-process -force
+}
+
+
+
+
+
+=========================================================
+$cred = Get-Credential -UserName sysadmin
+Enter-PSSession -ComputerName 10.10.10.161 -Credential
+Enter-PSHostProcess -Id 3848 -AppDomainName DscPsPluginWkr_AppDomain
+Debug-Runspace -Id 3
+
+
+
+==============================================================
+
+
+#Register-PackageSource -Name local -Location . -Trusted -Provider PowerShellGet -force
+#Install-Package -Source . -Name computermanagementdsc
+
+Configuration ComputerDscPackage
+{
+    param ()
+
+    Import-DscResource -ModuleName 'PSDesiredStateConfiguration'
+    Import-DscResource -ModuleName 'PackageManagement' 
+
+    Node localhost
+    {
+        File DirectoryCopy
+        {
+            Ensure = "Present" # Ensure the directory is Present on the target node.
+            Type = "Directory" # The default is File.
+            Recurse = $true # Recursively copy all subdirectories.
+            SourcePath = "\\10.10.10.161\packages"
+            DestinationPath = "$env:SystemRoot\TEMP\packages"
+        }
+
+        File NugetCopy
+        {
+            Ensure = "Present" # Ensure the directory is Present on the target node.
+            Type = "Directory" # The default is File.
+            SourcePath = "\\10.10.10.161\NuGet"
+            DestinationPath = "$env:ProgramFiles\NuGet"
+        }
+<#
+        PackageManagementSource LocalSourceRepository
+        {
+            Ensure      = "Present"
+            Name        = "LocalSourceRepository"
+            ProviderName= "Nuget"
+            SourceLocation   = "$env:SystemRoot\TEMP\nuget"
+            InstallationPolicy ="Trusted"
+        }
+    
+        PackageManagement ComputerResource
+        {
+            Ensure               = "Present"
+            Name                 = "ComputerManagementDsc"
+            RequiredVersion      = "8.4.0"
+            DependsOn            = "[PackageManagementSource]LocalSourceRepository"
+        }
+    
+        PackageManagement NetworkResource
+        {
+            Ensure               = "Present"
+            Name                 = "NetworkingDsc"
+            RequiredVersion      = "8.2.0"
+            DependsOn            = "[PackageManagementSource]LocalSourceRepository"
+        }
+        #>
+    }
+    
+}
+
+ComputerDscPackage -OutputPath:"C:\tmp\ComputerDscPackage"
